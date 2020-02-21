@@ -1,9 +1,13 @@
 package com.mandron.utility;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
@@ -14,9 +18,11 @@ import android.hardware.camera2.CameraManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.Toast;
 
 import java.io.IOException;
@@ -29,8 +35,10 @@ public class MainActivity extends AppCompatActivity {
     Button apmode, flash;
     private Camera camera;
     private boolean isFlashOn = false;
-    private boolean hasFlash;
+    private boolean hasCameraFlash;
+    private final int CAMERA_REQUEST_CODE=2;
     Camera.Parameters params;
+    EditText seconds;
 
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     @Override
@@ -38,176 +46,89 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        apmode = findViewById(R.id.apmode);
-        flash = findViewById(R.id.flash);
+        hasCameraFlash = getPackageManager().
+                hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH);
 
-
-        hasFlash = getApplicationContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH);
-
-        if(!hasFlash) {
-
-            Toast.makeText(this, "No flash light", Toast.LENGTH_SHORT).show();
-        }
-
-        getCamera();
-
-
-
-
-
-        apmode.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-
-
-
-
-            }
-        });
-
-
+        flash =  (Button)findViewById(R.id.flash);
+        seconds =  (EditText) findViewById(R.id.seconds);
 
         flash.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onClick(View v) {
-
-
-                camera = Camera.open();
-                Camera.Parameters p = camera.getParameters();
-                p.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
-                camera.setParameters(p);
-                SurfaceTexture mPreviewTexture = new SurfaceTexture(0);
-                try {
-                    camera.setPreviewTexture(mPreviewTexture);
-                } catch (IOException ex) {
-                    // Ignore
-                }
-              //  camera.startPreview();
-
-
-                if (isFlashOn) {
-                    turnOffFlash();
-                    flash.setText("ON");
-                } else {
-                    turnOnFlash();
-                    flash.setText("OFF");
-
-                    new Timer().schedule(new TimerTask() {
-                        @Override
-                        public void run() {
-                            Log.i("mangatha","da");
-                            turnOffFlash();
-                        }
-                    }, 3000);
-
-
-
-
-                }
+            public void onClick(View view) {
+                askPermission(Manifest.permission.CAMERA,CAMERA_REQUEST_CODE);
 
             }
         });
-
-
-
     }
 
+    private void flashLight() {
+        if (hasCameraFlash) {
+            if (isFlashOn) {
+                flash.setText("ON");
+                flashLightOff();
+                isFlashOn=false;
+            } else {
+                flash.setText("OFF");
+                flashLightOn();
+                isFlashOn=true;
 
-
-
-    private void getCamera() {
-
-        if (camera == null) {
-            try {
-                camera = Camera.open();
-                params = camera.getParameters();
-            }catch (Exception e) {
-
+                new Handler().postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        flashLightOff();
+                    }
+                }, Integer.parseInt(seconds.getText().toString())*1000);
             }
+        } else {
+            Toast.makeText(MainActivity.this, "No flash available on your device",
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void flashLightOn() {
+        CameraManager cameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+
+        try {
+            String cameraId = cameraManager.getCameraIdList()[0];
+            cameraManager.setTorchMode(cameraId, true);
+        } catch (CameraAccessException e) {
+        }
+    }
+
+    private void flashLightOff() {
+        CameraManager cameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+        try {
+            String cameraId = cameraManager.getCameraIdList()[0];
+            cameraManager.setTorchMode(cameraId, false);
+        } catch (CameraAccessException e) {
+        }
+    }
+
+    private void askPermission(String permission,int requestCode) {
+        if (ContextCompat.checkSelfPermission(this,permission)!= PackageManager.PERMISSION_GRANTED){
+            // We Dont have permission
+            ActivityCompat.requestPermissions(this,new String[]{permission},requestCode);
+
+        }else {
+            // We already have permission do what you want
+            flashLight();
         }
 
     }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        switch (requestCode) {
+            case CAMERA_REQUEST_CODE:
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    hasCameraFlash = getPackageManager().
+                            hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH);
+                    Toast.makeText(this, "Camera Permission Granted", Toast.LENGTH_LONG).show();
+                    flashLight();
 
-    private void turnOnFlash() {
-
-        if(!isFlashOn) {
-            if(camera == null || params == null) {
-                return;
-            }
-
-            params = camera.getParameters();
-            params.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
-            camera.setParameters(params);
-            camera.startPreview();
-            isFlashOn = true;
+                } else {
+                    Toast.makeText(this, "Camera Permission Denied", Toast.LENGTH_LONG).show();
+                }
+                break;
         }
-
-    }
-
-
-
-    private void turnOffFlash() {
-
-        if (isFlashOn) {
-            if (camera == null || params == null) {
-                return;
-            }
-
-            params = camera.getParameters();
-            params.setFlashMode(Camera.Parameters.FLASH_MODE_OFF);
-            camera.setParameters(params);
-            camera.stopPreview();
-            isFlashOn = false;
-        }
-    }
-
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-
-        // on pause turn off the flash
-        turnOffFlash();
-    }
-
-    @Override
-    protected void onRestart() {
-        super.onRestart();
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-
-        // on resume turn on the flash
-        if(hasFlash)
-            turnOnFlash();
-    }
-
-    @Override
-    protected void onStart() {
-        super.onStart();
-
-        // on starting the app get the camera params
-        getCamera();
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-
-        // on stop release the camera
-        if (camera != null) {
-            camera.release();
-            camera = null;
-        }
-    }
-
-
-}
+    }}
